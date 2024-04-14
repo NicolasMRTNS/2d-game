@@ -1,5 +1,6 @@
-import { SCALE_FACTOR } from './constants'
-import { k } from './kaboomCtx'
+import { SCALE_FACTOR, dialogueData } from './constants.js'
+import { k } from './kaboomCtx.js'
+import { displayDialogue, setCamScale } from './utils.js'
 
 // In Vite, everything in the public folder is accessible from anywhere so no need to ./public/spritesheet.png
 k.loadSprite('spritesheet', './spritesheet.png', {
@@ -24,7 +25,7 @@ k.scene('main', async () => {
   const mapData = await (await fetch('./map.json')).json()
   const layers = mapData.layers
 
-  const map = k.make([k.sprite('map'), k.pos(0), k.scale(SCALE_FACTOR)])
+  const map = k.add([k.sprite('map'), k.pos(0), k.scale(SCALE_FACTOR)])
 
   const player = k.make([
     k.sprite('spritesheet', { anim: 'idle-down' }),
@@ -58,12 +59,108 @@ k.scene('main', async () => {
         if (boundary.name) {
           player.onCollide(boundary.name, () => {
             player.isInDialog = true
-            //TODO
+            displayDialogue(
+              dialogueData[boundary.name],
+              () => (player.isInDialog = false)
+            )
           })
+        }
+      }
+      continue
+    }
+
+    if (layer.name === 'spawnpoints') {
+      for (const entity of layer.objects) {
+        if (entity.name === 'player') {
+          player.pos = k.vec2(
+            (map.pos.x + entity.x) * SCALE_FACTOR,
+            (map.pos.y + entity.y) * SCALE_FACTOR
+          )
+          k.add(player)
+          continue
         }
       }
     }
   }
+
+  setCamScale(k)
+
+  k.onResize(() => {
+    setCamScale(k)
+  })
+
+  k.onUpdate(() => {
+    k.camPos(player.pos.x, player.pos.y + 100)
+  })
+
+  k.onMouseDown((mouseBtn) => {
+    // Move when clicking the left mouse btn and not in dialog
+    if (mouseBtn !== 'left' || player.isInDialog) {
+      return
+    }
+
+    const worldMousePos = k.toWorld(k.mousePos())
+    player.moveTo(worldMousePos, player.speed)
+
+    const mouseAngle = player.pos.angle(worldMousePos)
+
+    const lowerBound = 50
+    const upperBound = 125
+
+    // Animation going up
+    if (
+      mouseAngle > lowerBound &&
+      mouseAngle < upperBound &&
+      player.curAnim() !== 'walk-up'
+    ) {
+      player.play('walk-up')
+      player.direction = 'up'
+      return
+    }
+
+    // Animation going down
+    if (
+      mouseAngle < -lowerBound &&
+      mouseAngle > -upperBound &&
+      player.curAnim() !== 'walk-down'
+    ) {
+      player.play('walk-down')
+      player.direction = 'down'
+      return
+    }
+
+    // Animation going right
+    if (Math.abs(mouseAngle) > upperBound) {
+      player.flipX = false
+      if (player.curAnim() !== 'walk-side') {
+        player.play('walk-side')
+      }
+      player.direction = 'right'
+      return
+    }
+
+    // Animation going left
+    if (Math.abs(mouseAngle) < lowerBound) {
+      player.flipX = true
+      if (player.curAnim() !== 'walk-side') {
+        player.play('walk-side')
+      }
+      player.direction = 'left'
+      return
+    }
+  })
+
+  k.onMouseRelease(() => {
+    if (player.direction === 'down') {
+      player.play('idle-down')
+      return
+    }
+    if (player.direction === 'up') {
+      player.play('idle-up')
+      return
+    }
+    player.play('idle-side')
+  })
 })
 
 // Default scene
